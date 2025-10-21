@@ -8,10 +8,23 @@ WIDTH, HEIGHT = 720, 360
 
 screen = pygame.display.set_mode((720, 360))
 clock = pygame.time.Clock()
+myFont = pygame.font.SysFont( "arial", 30, True, False)
+titleFont = pygame.font.SysFont("arial",60, True, False)
+smallFont = pygame.font.SysFont("arial",15,True, False)
+
+class Text():
+    def __init__(self, text, font):
+        self.surf = font.render(text, True, (0, 0, 0))
+        self.rect = self.surf.get_rect()
+
+    def draw(self, screen):
+        screen.blit(self.surf, self.rect)
 
 class Button():
-    def __init__(self, rect):
+    def __init__(self, rect, text):
         self.rect = rect
+        self.text = text
+        self.text.rect.center = self.rect.center
     
     def check(self):
         pos = pygame.mouse.get_pos()
@@ -19,16 +32,25 @@ class Button():
             return True
         return False
 
+    def draw(self, screen):
+        pygame.draw.rect(screen, 'blue', self.rect)
+        self.text.draw(screen)
+
 class Menu():
     def __init__(self):
-        self.pos = (230, 30)
+        self.pos = (240, 30)
         self.size = (WIDTH-self.pos[0]*2, HEIGHT-self.pos[1]*2)
         self.rect = pygame.Rect(*self.pos, *self.size)
-        self.retry = Button(pygame.Rect(self.pos[0]+self.size[0]/4, self.pos[1]+self.size[1]/4, self.size[0]/2, self.size[1]/2))
-    
-    def draw(self, screen):
+        self.retry = Button(pygame.Rect(self.pos[0]+self.size[0]/4, self.pos[1]+self.size[1]*4/5-15, self.size[0]/2, self.size[1]/5), Text('RETRY', myFont))
+        
+    def draw(self, screen, score=0):
         pygame.draw.rect(screen, 'green', self.rect)
-        pygame.draw.rect(screen, 'white', self.retry.rect)
+        score_text = Text(str(score), titleFont)
+        score_text.rect.centerx = self.rect.centerx
+        score_text.rect.y = self.rect.y + 15
+        score_text.draw(screen)
+
+        self.retry.draw(screen)
 
 while True:
     pillars = []
@@ -46,3 +68,4 @@ while True:
         men_u.draw(screen)
 
         pygame.display.flip()
+

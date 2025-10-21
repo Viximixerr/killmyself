@@ -1,0 +1,191 @@
+import pygame
+import sys
+import random
+import cv2
+#import dlib
+
+
+pygame.init()
+WIDTH, HEIGHT = 720, 360
+GRAV = 0.5
+MOVE = -7
+PWINDOW = 150
+N = 4
+LASERWIDTH = 15
+
+pillars = []
+
+class Button():
+    def __init__(self, rect):
+        self.rect = rect
+    
+    def check(self):
+        pos = pygame.mouse.get_pos()
+        if self.rect.collidepoint(pos):
+            return True
+        return False
+
+class Bird():
+    def __init__(self):
+        self.pos = [WIDTH/4, HEIGHT/2]
+        self.vel = [0, 0]
+        self.size = [30, 30]
+        self.rect = pygame.Rect(*self.pos, *self.size) 
+        self.jump = False
+        self.bounds = [0, HEIGHT-self.size[0]]
+
+    def update(self):
+        self.vel[1] += GRAV
+        if self.jump:
+            self.vel[1] = MOVE
+
+        self.pos[1] += self.vel[1]
+        self.rect = pygame.Rect(*self.pos, *self.size)
+        self.jump = False
+        
+        if self.pos[1] < self.bounds[0] or self.pos[1] > self.bounds[1]:
+            return True
+        return False
+
+class Pillars():
+    def __init__(self, initwin:int=None):
+        self.pos = WIDTH
+        self.window_size = PWINDOW
+        
+        self.win_start = random.random() * (HEIGHT-60) + 30 if initwin is None else initwin + 6*PWINDOW*random.random()-3*PWINDOW
+        while self.win_start > HEIGHT-PWINDOW or self.win_start < PWINDOW:
+            self.win_start = random.random() * (HEIGHT-60) + 30 if initwin is None else initwin + 6*PWINDOW*random.random()-3*PWINDOW
+
+        self.rect1_y = self.win_start
+        self.rect2_y = self.win_start+PWINDOW
+        
+        self.crazy_pillars = False #TODO: change this to be random af 
+        self.rect1 = pygame.Rect(self.pos, 0, 30, self.win_start)
+        self.rect2 = pygame.Rect(self.pos, self.win_start + PWINDOW, 30, HEIGHT)
+        self.gen_flag = True
+        self.up = False if random.random() > .5 else True 
+
+    def update(self):
+        self.pos -= 4
+        if self.pos < -30:
+            pillars.remove(self)
+        
+        if self.crazy_pillars:
+            print('insanity')
+            if self.pos < WIDTH / 2+30 and self.pos > WIDTH/2 :
+                print('yep')
+                if self.up:
+                    self.win_start += 7
+                else:
+                    self.win_start -= 7
+
+        if self.pos < WIDTH *.75 and len(pillars) < N and self.gen_flag:
+            pillars.append(Pillars())#pillars[-1].win_start+PWINDOW/2))
+            self.gen_flag = False
+            
+        self.rect1 = pygame.Rect(self.pos, 0, 30, self.win_start)
+        self.rect2 = pygame.Rect(self.pos, self.win_start + PWINDOW, 30, HEIGHT)
+
+class Laser():
+    def __init__(self, pos):
+        self.pos = pos
+        self.tick = 0
+        self.state = 'ready'
+        self.ready = 50
+        self.more_ready = 20
+        self.fire = 5
+        self.dead = 100
+        self.rect = pygame.Rect(0, self.pos, WIDTH, LASERWIDTH)
+
+    def update(self, pos):
+        self.tick += 1
+        print(self.tick)
+        if self.tick <= self.ready:
+            self.state = 'ready'
+            self.pos += (pos - self.pos) / 10
+            self.rect = pygame.Rect(0, self.pos, WIDTH, LASERWIDTH)
+        elif self.tick > self.ready and self.tick <= self.ready + self.more_ready:
+            self.staet = 'more_ready'
+            
+        elif self.tick > self.ready+self.more_ready and self.tick <= self.ready + self.fire + self.more_ready:
+            self.state = 'fire'
+            self.pos = random.random()*HEIGHT
+    
+        elif self.tick > self.ready + self.more_ready+ self.fire and self.tick <= self.ready + self.more_ready+ self.fire + self.dead:
+            self.state = 'dead'
+        else:
+            print('a')
+            self.tick = 0
+            
+def menu(screen):
+    global pillars
+    pillars = []
+    retry_button = Button(pygame.Rect(2*WIDTH/5, 2*HEIGHT/5, WIDTH/5, HEIGHT/5))
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit(0)
+            elif event.type == pygame.MOUSEBUTTONDOWN or event.type == pygame.KEYDOWN:
+                if retry_button.check():
+                    main()
+
+        pygame.draw.rect(screen, 'green', pygame.Rect(WIDTH/3, HEIGHT/3, WIDTH/3, HEIGHT/3))
+        pygame.draw.rect(screen, 'blue', retry_button.rect)
+
+        pygame.display.flip()
+
+def main():
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    clock = pygame.time.Clock()
+    bird = Bird()
+    pillars.append(Pillars())
+    laser = Laser(0)
+    laser_on = False
+    laser_color = 30
+
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit(0)
+            elif event.type == pygame.KEYDOWN:
+                bird.jump = True
+        
+        floor = bird.update()
+        laser.update(bird.pos[1])
+
+        screen.fill('black')
+
+        if laser_on:
+            laser_kill = False
+            if laser.state == 'ready':
+                laser_color += 3
+                pygame.draw.rect(screen, (laser_color, laser_color, laser_color), laser.rect)
+            elif laser.state == 'more_ready':
+                pygame.draw.rect(screen, (laser_color, 0, laser_color//3), laser.rect)
+            elif laser.state == 'fire':
+                pygame.draw.rect(screen, (laser_color, 0, 0), laser.rect)
+                laser_kill = bird.rect.colliderect(laser.rect)
+            else:
+                laser_color = 30
+
+        pygame.draw.rect(screen, 'red', bird.rect)
+
+        collide = False
+        for pillar in pillars:
+            pillar.update()
+            pygame.draw.rect(screen, 'blue', pillar.rect1)
+            pygame.draw.rect(screen, 'blue', pillar.rect2)
+            collide = collide or bird.rect.colliderect(pillar.rect1) or bird.rect.colliderect(pillar.rect2)
+        
+        if floor or collide or laser_kill:
+            break
+        
+        pygame.display.flip()
+        clock.tick(60)
+
+    menu(screen)
+
+if __name__ == '__main__':
+    main()

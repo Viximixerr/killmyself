@@ -2,13 +2,40 @@ import pygame
 import sys
 import random
 import cv2
-#import dlib
 
+import mediapipe as mp
+import numpy as np
+
+mp_face = mp.solutions.face_mesh
+mp_drawing = mp.solutions.drawing_utils
+LEFT_EYE_IDX = [362, 380, 374, 263, 386, 385]
+RIGHT_EYE_IDX = [33, 159, 158, 133, 153, 145]
+THRESH = 0.2
+
+face = mp_face.FaceMesh(
+    max_num_faces=1,
+    refine_landmarks=True,
+    min_detection_confidence=0.5,
+    min_tracking_confidence=0.5
+)
+
+def landmarktonp(landmark):
+    return np.array([landmark.x, landmark.y, landmark.z])
+
+def eye_aspect_ratio(eye_landmarks, landmarks):
+    
+    A = np.linalg.norm(np.array(landmarktonp(landmarks[eye_landmarks[1]])) - 
+                       np.array(landmarktonp(landmarks[eye_landmarks[5]])))
+    B = np.linalg.norm(np.array(landmarktonp(landmarks[eye_landmarks[2]])) - 
+                       np.array(landmarktonp(landmarks[eye_landmarks[4]])))
+    C = np.linalg.norm(np.array(landmarktonp(landmarks[eye_landmarks[0]])) - 
+                       np.array(landmarktonp(landmarks[eye_landmarks[3]])))
+    return (A + B) / (2.0 * C)
 
 pygame.init()
 WIDTH, HEIGHT = 720, 360
 GRAV = 0.5
-MOVE = -7
+MOVE = -5
 PWINDOW = 150
 N = 4
 LASERWIDTH = 15
@@ -64,6 +91,7 @@ class Pillars():
         self.rect2 = pygame.Rect(self.pos, self.win_start + PWINDOW, 30, HEIGHT)
         self.gen_flag = True
         self.up = False if random.random() > .5 else True 
+        self.scored = False
 
     def update(self):
         self.pos -= 4
@@ -71,9 +99,7 @@ class Pillars():
             pillars.remove(self)
         
         if self.crazy_pillars:
-            print('insanity')
             if self.pos < WIDTH / 2+30 and self.pos > WIDTH/2 :
-                print('yep')
                 if self.up:
                     self.win_start += 7
                 else:
@@ -99,7 +125,6 @@ class Laser():
 
     def update(self, pos):
         self.tick += 1
-        print(self.tick)
         if self.tick <= self.ready:
             self.state = 'ready'
             self.pos += (pos - self.pos) / 10
@@ -114,10 +139,9 @@ class Laser():
         elif self.tick > self.ready + self.more_ready+ self.fire and self.tick <= self.ready + self.more_ready+ self.fire + self.dead:
             self.state = 'dead'
         else:
-            print('a')
             self.tick = 0
             
-def menu(screen):
+def menu(screen, score):
     global pillars
     pillars = []
     retry_button = Button(pygame.Rect(2*WIDTH/5, 2*HEIGHT/5, WIDTH/5, HEIGHT/5))
@@ -143,8 +167,38 @@ def main():
     laser = Laser(0)
     laser_on = False
     laser_color = 30
+    score = 0
+    laser_kill = False
+
+    cap = cv2.VideoCapture(0)
 
     while True:
+        ret, frame = cap.read()
+
+        #h, w = frame.shape[:2]
+        img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = face.process(img_rgb)
+        
+        closed_eyes = 0
+        if results.multi_face_landmarks:
+            landmarks = results.multi_face_landmarks[0].landmark
+            #for idx in LEFT_EYE_IDX:
+            #x = int(landmarks[idx].x * w)
+            #y = int(landmarks[idx].y * h)
+            #cv2.circle(frame, (x, y), 2, (0, 255, 0), -1)
+            if eye_aspect_ratio(LEFT_EYE_IDX, landmarks)<THRESH:
+                closed_eyes +=1
+            # Draw right eye
+            #for idx in RIGHT_EYE_IDX:
+                #x = int(landmarks[idx].x * w)
+                #y = int(landmarks[idx].y * h)
+                #cv2.circle(frame, (x, y), 2, (0, 255, 0), -1)
+            if eye_aspect_ratio(RIGHT_EYE_IDX, landmarks)<THRESH:
+                closed_eyes +=1
+
+        if closed_eyes==2: 
+            bird.jump = True
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -178,14 +232,17 @@ def main():
             pygame.draw.rect(screen, 'blue', pillar.rect1)
             pygame.draw.rect(screen, 'blue', pillar.rect2)
             collide = collide or bird.rect.colliderect(pillar.rect1) or bird.rect.colliderect(pillar.rect2)
-        
+            if not pillar.scored and pillar.pos < bird.pos[0]:
+                score += 1
+                pillar.scored = True
+                
         if floor or collide or laser_kill:
             break
         
         pygame.display.flip()
-        clock.tick(60)
+        clock.tick(30)
 
-    menu(screen)
+    menu(screen, score=score)
 
 if __name__ == '__main__':
     main()
